@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tsk</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #fbfbfc;
+    --ink: #16181d;
+    --ink-2: #5b6270;
+    --ink-3: #878e9c;
+    --line: #e2e5ea;
+    --line-2: #d0d5dd;
+    --accent: #2f6feb;
+    --accent-soft: #e7effd;
+    --p1: #d1414a;
+    --p2: #c98a1e;
+    --p3: #7a8296;
+    --client: #7b4bd1;
+    --internal: #2f8f6b;
+    --admin: #8a7250;
+    --overdue: #d1414a;
+    --shadow: 0 1px 2px rgba(16,20,30,.06), 0 4px 12px rgba(16,20,30,.05);
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1c1f25;
+      --panel-2: #21252c;
+      --ink: #e8eaef;
+      --ink-2: #a4abb8;
+      --ink-3: #7b8290;
+      --line: #2a2f37;
+      --line-2: #363d47;
+      --accent: #5b91f5;
+      --accent-soft: #1e2b44;
+      --p1: #ef6b72;
+      --p2: #e0aa4a;
+      --p3: #8a92a2;
+      --client: #a684ea;
+      --internal: #4fbf93;
+      --admin: #bda07a;
+      --overdue: #ef6b72;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 13px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  /* ---------------------------------------------------------- top bar */
+  header {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 14px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand {
+    font-weight: 700; font-size: 15px; letter-spacing: -.02em;
+    color: var(--ink); padding-right: 4px; user-select: none;
+  }
+  .brand span { color: var(--accent); }
+
+  #quickadd {
+    flex: 1 1 auto; min-width: 200px;
+    padding: 7px 11px;
+    background: var(--panel-2);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    outline: none;
+  }
+  #quickadd:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+  .field {
+    padding: 6px 8px;
+    background: var(--panel-2);
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    outline: none;
+  }
+  .field:focus { border-color: var(--accent); }
+  header .field { max-width: 150px; }
+
+  .ghost {
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px solid var(--line-2);
+    border-radius: var(--radius);
+    color: var(--ink-2);
+  }
+  .ghost:hover { background: var(--panel-2); color: var(--ink); }
+  .ghost.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+  .hint {
+    flex: none; color: var(--ink-3); font-size: 11px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 34ch;
+  }
+  .hint code {
+    font-family: "Cascadia Mono", Consolas, monospace;
+    background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 3px; padding: 0 3px;
+  }
+
+  /* ---------------------------------------------------------- board */
+  #board {
+    flex: 1 1 auto;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(230px, 1fr);
+    gap: 10px;
+    padding: 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .col {
+    display: flex; flex-direction: column; min-height: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .col.drop { border-color: var(--accent); background: var(--accent-soft); }
+  .col > h2 {
+    flex: none; margin: 0; padding: 9px 11px 7px;
+    font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--ink-2);
+    display: flex; align-items: center; gap: 7px;
+  }
+  .col > h2 b { margin-left: auto; font-weight: 600; color: var(--ink-3); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .cards { flex: 1 1 auto; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 7px; }
+  .cards:empty::after {
+    content: "nothing here";
+    color: var(--ink-3); font-size: 11px; font-style: italic; padding: 4px 3px;
+  }
+
+  .card {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--p3);
+    border-radius: var(--radius);
+    padding: 8px 9px;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+  }
+  .card:hover { border-color: var(--line-2); }
+  .card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .card.dragging { opacity: .4; }
+  .card.P1 { border-left-color: var(--p1); }
+  .card.P2 { border-left-color: var(--p2); }
+  .card.P3 { border-left-color: var(--p3); }
+  .card .t { font-weight: 550; margin-bottom: 5px; overflow-wrap: anywhere; }
+  .card .na { color: var(--ink-2); font-size: 11.5px; margin: -2px 0 6px; overflow-wrap: anywhere; }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+
+  .chip {
+    font-size: 10.5px; line-height: 1.5; padding: 0 5px;
+    border-radius: 4px; border: 1px solid var(--line-2);
+    color: var(--ink-2); background: var(--panel);
+    white-space: nowrap;
+  }
+  .chip.org { font-weight: 600; }
+  .chip.org.client { color: var(--client); border-color: color-mix(in srgb, var(--client) 40%, transparent); }
+  .chip.org.internal { color: var(--internal); border-color: color-mix(in srgb, var(--internal) 40%, transparent); }
+  .chip.org.admin { color: var(--admin); border-color: color-mix(in srgb, var(--admin) 40%, transparent); }
+  .chip.jira { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); text-decoration: none; font-family: "Cascadia Mono", Consolas, monospace; }
+  .chip.jira:hover { background: var(--accent-soft); }
+  .chip.due.soon { color: var(--p2); border-color: color-mix(in srgb, var(--p2) 45%, transparent); }
+  .chip.due.late { color: #fff; background: var(--overdue); border-color: var(--overdue); font-weight: 600; }
+  .chip.wait { color: var(--p2); border-color: color-mix(in srgb, var(--p2) 45%, transparent); }
+
+  /* ---------------------------------------------------------- detail */
+  #detail {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%);
+    background: var(--panel);
+    border-left: 1px solid var(--line);
+    box-shadow: -8px 0 30px rgba(0,0,0,.12);
+    display: flex; flex-direction: column;
+    transform: translateX(100%); transition: transform .16s ease;
+    z-index: 10;
+  }
+  #detail.open { transform: none; }
+  #detail header { background: transparent; }
+  #detail .body { flex: 1 1 auto; overflow-y: auto; padding: 4px 14px 16px; }
+  #detail h3 { margin: 16px 0 7px; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .grid2 label, .full label { display: block; font-size: 11px; color: var(--ink-2); margin-bottom: 3px; }
+  .full { margin-top: 8px; }
+  .grid2 .field, .full .field { width: 100%; }
+  #d-title { font-size: 15px; font-weight: 600; }
+  #d-body { min-height: 220px; resize: vertical; font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; line-height: 1.55; }
+  #d-file { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10.5px; color: var(--ink-3); overflow-wrap: anywhere; }
+  .danger { color: var(--p1); border-color: color-mix(in srgb, var(--p1) 40%, transparent); }
+  .danger:hover { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 18px; transform: translate(-50%, 60px);
+    background: var(--ink); color: var(--bg);
+    padding: 7px 14px; border-radius: 20px; font-size: 12px;
+    opacity: 0; transition: all .18s ease; pointer-events: none; z-index: 20;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">t<span>s</span>k</div>
+  <input id="quickadd" placeholder="Add a task…  Renew Acme SSO cert @acme !p1 due:fri HCP-4821 #auth" autocomplete="off" spellcheck="false">
+  <span class="hint"><code>@org</code> <code>!p1</code> <code>due:fri</code> <code>#tag</code> <code>~person</code> <code>ABC-12</code></span>
+  <input id="search" class="field" placeholder="Filter…" autocomplete="off">
+  <select id="f-org" class="field"><option value="">All orgs</option></select>
+  <select id="f-pri" class="field">
+    <option value="">Any priority</option><option>P1</option><option>P2</option><option>P3</option>
+  </select>
+  <button id="f-due" class="ghost" title="Only overdue or due within 3 days">Due soon</button>
+  <button id="f-done" class="ghost" title="Show the Done column">Done</button>
+</header>
+
+<div id="board"></div>
+
+<aside id="detail">
+  <header>
+    <strong id="d-id" style="font-family:Consolas,monospace;color:var(--ink-3)"></strong>
+    <a id="d-jira" class="chip jira" target="_blank" rel="noopener" hidden></a>
+    <span style="flex:1"></span>
+    <button id="d-archive" class="ghost danger">Archive</button>
+    <button id="d-close" class="ghost">Close</button>
+  </header>
+  <div class="body">
+    <div class="full"><label for="d-title">Title</label><input id="d-title" class="field"></div>
+    <h3>Classification</h3>
+    <div class="grid2">
+      <div><label for="d-status">Status</label><select id="d-status" class="field"></select></div>
+      <div><label for="d-priority">Priority</label><select id="d-priority" class="field"></select></div>
+      <div><label for="d-org">Client / org</label><input id="d-org" class="field" list="orglist"></div>
+      <div><label for="d-kind">Kind</label><select id="d-kind" class="field"></select></div>
+      <div><label for="d-jira-key">JIRA key</label><input id="d-jira-key" class="field" placeholder="HCP-4821"></div>
+      <div><label for="d-due">Due</label><input id="d-due" class="field" type="date"></div>
+      <div><label for="d-waiting">Waiting on</label><input id="d-waiting" class="field" placeholder="Person or team"></div>
+      <div><label for="d-since">Waiting since</label><input id="d-since" class="field" type="date"></div>
+    </div>
+    <div class="full"><label for="d-tags">Tags <span style="color:var(--ink-3)">(comma separated)</span></label><input id="d-tags" class="field"></div>
+    <h3>Notes</h3>
+    <textarea id="d-body" class="field" spellcheck="false"></textarea>
+    <h3>File</h3>
+    <div id="d-file"></div>
+  </div>
+</aside>
+
+<datalist id="orglist"></datalist>
+<div id="toast"></div>
+
+<script type="module">
+const $ = (s) => document.querySelector(s);
+const COLUMNS = [
+  ['inbox',       'Inbox',       'var(--ink-3)'],
+  ['next',        'Next',        'var(--accent)'],
+  ['in-progress', 'In progress', 'var(--internal)'],
+  ['waiting',     'Waiting',     'var(--p2)'],
+  ['blocked',     'Blocked',     'var(--p1)'],
+  ['done',        'Done',        'var(--ink-3)'],
+];
+
+let CONFIG = { jiraBaseUrl: '', orgs: [], statuses: [], priorities: [], kinds: [] };
+let TASKS = [];
+let selectedId = null;
+const filters = { text: '', org: '', priority: '', dueSoon: false, showDone: false };
+
+/* ------------------------------------------------------------------ util */
+
+const iso = (d) => {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+const TODAY = iso(new Date());
+
+function daysUntil(dateStr) {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const then = new Date(y, m - 1, d);
+  const now = new Date();
+  return Math.round((then - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+}
+
+function toast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: opts?.body ? { 'content-type': 'application/json' } : undefined,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    toast('Error: ' + err.error);
+    throw new Error(err.error);
+  }
+  return res.json();
+}
+
+/* --------------------------------------------------------- quick-add parse */
+
+// Turns "Renew cert @acme !p1 due:fri HCP-4821 #auth ~Dana" into a task object.
+// Unrecognised words fall through to the title, so you can always just type prose.
+function parseQuickAdd(raw) {
+  const t = { title: '', tags: [] };
+  const words = [];
+
+  for (const word of raw.trim().split(/\s+/)) {
+    let m;
+    if ((m = word.match(/^!p?([123])$/i))) { t.priority = 'P' + m[1]; continue; }
+    if ((m = word.match(/^@(.+)$/))) { t.org = resolveOrg(m[1]); continue; }
+    if ((m = word.match(/^#(.+)$/))) { t.tags.push(m[1]); continue; }
+    if ((m = word.match(/^~(.+)$/))) { t.waiting_on = m[1].replace(/_/g, ' '); t.status = 'waiting'; continue; }
+    if ((m = word.match(/^due:(.+)$/i))) { const d = parseDue(m[1]); if (d) { t.due = d; continue; } }
+    if (/^[A-Z][A-Z0-9]{1,9}-\d+$/.test(word)) { t.jira = word.toUpperCase(); continue; }
+    words.push(word);
+  }
+  t.title = words.join(' ').trim();
+  return t;
+}
+
+// "@acme" should find "Acme Health" rather than creating a second org.
+function resolveOrg(token) {
+  const needle = token.replace(/[_-]/g, ' ').toLowerCase();
+  const hit = CONFIG.orgs.find((o) => o.toLowerCase() === needle)
+    || CONFIG.orgs.find((o) => o.toLowerCase().startsWith(needle));
+  return hit || token.replace(/_/g, ' ');
+}
+
+const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+function parseDue(v) {
+  const s = v.toLowerCase();
+  const shift = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (s === 'today') return shift(0);
+  if (s === 'tomorrow' || s === 'tmr') return shift(1);
+  if (s === 'eow') return shift((5 - new Date().getDay() + 7) % 7 || 7);
+
+  let m;
+  if ((m = s.match(/^\+(\d+)([dw])?$/))) return shift(Number(m[1]) * (m[2] === 'w' ? 7 : 1));
+  if ((m = s.match(/^(\d{1,2})\/(\d{1,2})$/))) {
+    const d = new Date();
+    return iso(new Date(d.getFullYear(), Number(m[1]) - 1, Number(m[2])));
+  }
+  const wd = WEEKDAYS.indexOf(s.slice(0, 3));
+  if (wd >= 0) return shift((wd - new Date().getDay() + 7) % 7 || 7);
+  return null;
+}
+
+/* ---------------------------------------------------------------- render */
+
+function visible(t) {
+  if (!filters.showDone && t.status === 'done') return false;
+  if (filters.org && t.org !== filters.org) return false;
+  if (filters.priority && t.priority !== filters.priority) return false;
+  if (filters.dueSoon) {
+    const d = daysUntil(t.due);
+    if (d === null || d > 3) return false;
+  }
+  if (filters.text) {
+    const hay = [t.id, t.title, t.org, t.jira, t.waiting_on, (t.tags || []).join(' '), t.body]
+      .join(' ').toLowerCase();
+    if (!hay.includes(filters.text)) return false;
+  }
+  return true;
+}
+
+const RANK = { P1: 0, P2: 1, P3: 2 };
+
+function sortTasks(a, b) {
+  if (RANK[a.priority] !== RANK[b.priority]) return RANK[a.priority] - RANK[b.priority];
+  const da = daysUntil(a.due), db = daysUntil(b.due);
+  if (da !== db) return (da ?? 9e9) - (db ?? 9e9);
+  return String(a.title).localeCompare(String(b.title));
+}
+
+function el(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text != null) n.textContent = text;
+  return n;
+}
+
+function firstLine(body) {
+  const m = String(body || '').match(/^##+[ \t]*next action[ \t]*$([\s\S]*?)(?=^##+[ \t]|$(?![\s\S]))/im);
+  return m ? m[1].trim().split(/\n/).find((l) => l.trim()) || '' : '';
+}
+
+function makeCard(t) {
+  const card = el('div', `card ${t.priority}`);
+  card.draggable = true;
+  card.dataset.id = t.id;
+  if (t.id === selectedId) card.classList.add('sel');
+
+  card.append(el('div', 't', t.title));
+
+  const na = firstLine(t.body);
+  if (na) card.append(el('div', 'na', na.length > 90 ? na.slice(0, 90) + '…' : na));
+
+  const meta = el('div', 'meta');
+  meta.append(el('span', `chip org ${t.kind}`, t.org));
+
+  if (t.jira) {
+    const a = el('a', 'chip jira', t.jira);
+    a.href = CONFIG.jiraBaseUrl + t.jira;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.onclick = (e) => e.stopPropagation();
+    meta.append(a);
+  }
+
+  if (t.due) {
+    const d = daysUntil(t.due);
+    const chip = el('span', 'chip due', d < 0 ? `${-d}d late` : d === 0 ? 'today' : d === 1 ? 'tomorrow' : t.due.slice(5));
+    if (d < 0) chip.classList.add('late');
+    else if (d <= 3) chip.classList.add('soon');
+    meta.append(chip);
+  }
+
+  if (t.waiting_on) {
+    const days = daysUntil(t.waiting_since);
+    meta.append(el('span', 'chip wait', `⏳ ${t.waiting_on}${days != null && days < 0 ? ` ${-days}d` : ''}`));
+  }
+
+  for (const tag of t.tags || []) meta.append(el('span', 'chip', '#' + tag));
+
+  card.append(meta);
+  card.onclick = () => openDetail(t.id);
+  card.ondragstart = (e) => {
+    e.dataTransfer.setData('text/plain', t.id);
+    e.dataTransfer.effectAllowed = 'move';
+    card.classList.add('dragging');
+  };
+  card.ondragend = () => card.classList.remove('dragging');
+  return card;
+}
+
+function render() {
+  const board = $('#board');
+  board.textContent = '';
+  const shown = TASKS.filter(visible);
+
+  for (const [status, label, color] of COLUMNS) {
+    if (status === 'done' && !filters.showDone) continue;
+
+    const col = el('div', 'col');
+    col.dataset.status = status;
+
+    const h = el('h2');
+    const dot = el('span', 'dot');
+    dot.style.background = color;
+    h.append(dot, document.createTextNode(label));
+    const items = shown.filter((t) => t.status === status).sort(sortTasks);
+    h.append(el('b', null, String(items.length)));
+    col.append(h);
+
+    const cards = el('div', 'cards');
+    for (const t of items) cards.append(makeCard(t));
+    col.append(cards);
+
+    col.ondragover = (e) => { e.preventDefault(); col.classList.add('drop'); };
+    col.ondragleave = () => col.classList.remove('drop');
+    col.ondrop = async (e) => {
+      e.preventDefault();
+      col.classList.remove('drop');
+      const id = e.dataTransfer.getData('text/plain');
+      const task = TASKS.find((t) => t.id === id);
+      if (task && task.status !== status) await patch(id, { status });
+    };
+    board.append(col);
+  }
+}
+
+/* ---------------------------------------------------------------- detail */
+
+function openDetail(id) {
+  const t = TASKS.find((x) => x.id === id);
+  if (!t) return;
+  selectedId = id;
+
+  $('#d-id').textContent = t.id;
+  $('#d-title').value = t.title;
+  $('#d-status').value = t.status;
+  $('#d-priority').value = t.priority;
+  $('#d-org').value = t.org;
+  $('#d-kind').value = t.kind;
+  $('#d-jira-key').value = t.jira || '';
+  $('#d-due').value = t.due || '';
+  $('#d-waiting').value = t.waiting_on || '';
+  $('#d-since').value = t.waiting_since || '';
+  $('#d-tags').value = (t.tags || []).join(', ');
+  $('#d-body').value = t.body || '';
+  $('#d-file').textContent = 'tasks/' + t.file;
+
+  const link = $('#d-jira');
+  link.hidden = !t.jira;
+  if (t.jira) { link.textContent = t.jira; link.href = CONFIG.jiraBaseUrl + t.jira; }
+
+  $('#detail').classList.add('open');
+  render();
+}
+
+function closeDetail() {
+  $('#detail').classList.remove('open');
+  selectedId = null;
+  render();
+}
+
+// Every detail field commits on blur / change, so there is no Save button to forget.
+function wireDetailField(sel, field, read) {
+  const node = $(sel);
+  const commit = () => {
+    if (!selectedId) return;
+    const task = TASKS.find((t) => t.id === selectedId);
+    const value = read(node);
+    if (!task || JSON.stringify(task[field] ?? null) === JSON.stringify(value ?? null)) return;
+    patch(selectedId, { [field]: value });
+  };
+  node.addEventListener('change', commit);
+  node.addEventListener('blur', commit);
+}
+
+/* ---------------------------------------------------------------- actions */
+
+async function patch(id, changes) {
+  const saved = await api('/api/tasks/' + id, { method: 'PATCH', body: JSON.stringify(changes) });
+  TASKS = TASKS.map((t) => (t.id === id ? saved : t));
+  if (selectedId === id) openDetail(id); else render();
+  toast('Saved ' + id);
+}
+
+async function refresh() {
+  TASKS = await api('/api/tasks');
+  render();
+}
+
+async function loadConfig() {
+  CONFIG = await api('/api/config');
+
+  const orgSel = $('#f-org');
+  const list = $('#orglist');
+  orgSel.textContent = '';
+  list.textContent = '';
+  orgSel.append(new Option('All orgs', ''));
+  for (const o of CONFIG.orgs) {
+    orgSel.append(new Option(o, o));
+    list.append(new Option(o));
+  }
+  orgSel.value = filters.org;
+
+  for (const [sel, values] of [['#d-status', CONFIG.statuses], ['#d-priority', CONFIG.priorities], ['#d-kind', CONFIG.kinds]]) {
+    const node = $(sel);
+    node.textContent = '';
+    for (const v of values) node.append(new Option(v, v));
+  }
+}
+
+/* ---------------------------------------------------------------- wiring */
+
+$('#quickadd').addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter' || !e.target.value.trim()) return;
+  const draft = parseQuickAdd(e.target.value);
+  if (!draft.title) return toast('Give the task a title');
+  e.target.value = '';
+  const saved = await api('/api/tasks', { method: 'POST', body: JSON.stringify(draft) });
+  TASKS.push(saved);
+  await loadConfig();
+  render();
+  toast(`${saved.id} added`);
+});
+
+$('#search').addEventListener('input', (e) => { filters.text = e.target.value.trim().toLowerCase(); render(); });
+$('#f-org').addEventListener('change', (e) => { filters.org = e.target.value; render(); });
+$('#f-pri').addEventListener('change', (e) => { filters.priority = e.target.value; render(); });
+
+for (const [sel, key] of [['#f-due', 'dueSoon'], ['#f-done', 'showDone']]) {
+  $(sel).addEventListener('click', (e) => {
+    filters[key] = !filters[key];
+    e.currentTarget.classList.toggle('on', filters[key]);
+    render();
+  });
+}
+
+$('#d-close').addEventListener('click', closeDetail);
+$('#d-archive').addEventListener('click', async () => {
+  const t = TASKS.find((x) => x.id === selectedId);
+  if (!t || !confirm(`Archive ${t.id}? The file moves to archive/ — nothing is deleted.`)) return;
+  await api('/api/tasks/' + t.id, { method: 'DELETE' });
+  TASKS = TASKS.filter((x) => x.id !== t.id);
+  closeDetail();
+  toast(t.id + ' archived');
+});
+
+const text = (n) => n.value.trim() || null;
+wireDetailField('#d-title', 'title', (n) => n.value.trim());
+wireDetailField('#d-status', 'status', (n) => n.value);
+wireDetailField('#d-priority', 'priority', (n) => n.value);
+wireDetailField('#d-org', 'org', (n) => n.value.trim());
+wireDetailField('#d-kind', 'kind', (n) => n.value);
+wireDetailField('#d-jira-key', 'jira', text);
+wireDetailField('#d-due', 'due', text);
+wireDetailField('#d-waiting', 'waiting_on', text);
+wireDetailField('#d-since', 'waiting_since', text);
+wireDetailField('#d-body', 'body', (n) => n.value);
+wireDetailField('#d-tags', 'tags', (n) => n.value.split(',').map((s) => s.trim()).filter(Boolean));
+
+document.addEventListener('keydown', (e) => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  if (e.key === 'Escape') {
+    if (typing) e.target.blur();
+    else closeDetail();
+    return;
+  }
+  if (typing) return;
+  if (e.key === 'n' || e.key === '/') { e.preventDefault(); $('#quickadd').focus(); }
+});
+
+await loadConfig();
+await refresh();
+$('#quickadd').focus();
+</script>
+</body>
+</html>

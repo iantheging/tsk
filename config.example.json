@@ -1,0 +1,5 @@
+{
+  "jiraBaseUrl": "https://your-company.atlassian.net/browse/",
+  "orgs": ["Internal"],
+  "port": 7337
+}

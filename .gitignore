@@ -1,0 +1,22 @@
+# ---------------------------------------------------------------------------
+# Your task data. These files name real clients — keep them off GitHub unless
+# you have deliberately chosen a private repo and want git as your backup.
+# ---------------------------------------------------------------------------
+tasks/
+archive/
+exports/
+
+# Local settings: your JIRA instance URL and port.
+# server.mjs recreates config.json with defaults on first run.
+config.json
+
+# Portable node.exe, if you drop one next to tsk.cmd
+node.exe
+node_modules/
+
+# Windows / editor noise
+Thumbs.db
+desktop.ini
+.DS_Store
+*.log
+.vscode/
