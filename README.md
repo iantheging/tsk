@@ -19,9 +19,14 @@ folder or drop it in OneDrive; every task is a small text file, so diffs stay re
 | Path                | What it is                                                        |
 | ------------------- | ----------------------------------------------------------------- |
 | `tasks/*.md`        | **Source of truth.** One file per task.                            |
-| `exports/tasks.csv` | **Derived.** Rewritten on every change. Open it in Excel any time. |
+| `exports/tasks.csv` | **Derived.** Rebuilt whenever a task changes, however it changed. Open it in Excel any time. |
 | `archive/*.md`      | Archived tasks. Nothing is ever deleted, just moved here.          |
 | `config.json`       | Your JIRA base URL, known orgs, port.                              |
+
+The app watches the `tasks` folder, so the CSV stays current whether the change came from the
+board, from Kiro, or from you editing a file in your IDE — and it keeps up even when the browser
+is closed. If the CSV happens to be open in Excel when it needs rewriting, the app retries
+quietly until Excel lets go; your task itself is saved either way.
 
 `tasks.csv` is a read-only view. Editing it does nothing — the `.md` files win, and your edit
 is overwritten on the next change. This is deliberate: three writers (you, Kiro, Copilot) on
@@ -99,7 +104,8 @@ Notes on hand-editing:
 - **Unknown fields survive.** Add `sprint: 24.9` or `client_contact: …` and the app carries it
   through every save untouched, even though it doesn't display it.
 - **Blank means null.** `due:` with nothing after it is an empty due date.
-- Refresh the browser to pick up files changed on disk.
+- Refresh the browser to pick up files changed on disk. The CSV updates on its own; the board
+  does not yet.
 
 ## Editing tasks from Kiro or Copilot
 

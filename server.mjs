@@ -9,7 +9,7 @@
  */
 import { createServer } from 'node:http';
 import { readFile, writeFile, readdir, mkdir, rename, unlink } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, watch } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -239,12 +239,70 @@ const CSV_COLUMNS = [
   'waiting_on', 'waiting_since', 'jira', 'tags', 'created', 'updated', 'next_action', 'file',
 ];
 
-async function exportCsv(tasks) {
+const CSV_PATH = join(EXPORTS_DIR, 'tasks.csv');
+
+// Always re-reads the folder rather than taking a task list, so a write by Kiro or
+// by hand produces the same export as a write through the API.
+async function exportCsv() {
+  const tasks = await loadAll();
   const rows = [CSV_COLUMNS.join(',')];
   for (const t of tasks) {
     rows.push(CSV_COLUMNS.map((c) => csvCell(c === 'next_action' ? nextAction(t.body) : t[c])).join(','));
   }
-  await writeFile(join(EXPORTS_DIR, 'tasks.csv'), '﻿' + rows.join('\r\n') + '\r\n', 'utf8');
+  const next = '﻿' + rows.join('\r\n') + '\r\n';
+
+  // Skip identical writes. Excel and OneDrive both notice every touch of this file,
+  // and the watcher below can fire several times for one save.
+  if ((await readFile(CSV_PATH, 'utf8').catch(() => null)) === next) return false;
+  await writeFile(CSV_PATH, next, 'utf8');
+  return true;
+}
+
+let exportTimer = null;
+let watching = false;
+
+let exportWarned = false;
+
+// Debounced and off the request path. A CSV locked open in Excel must not fail the
+// write that triggered it — the Markdown file is the source of truth and is already saved.
+function scheduleExport(delay = 150) {
+  if (exportTimer) clearTimeout(exportTimer);
+  exportTimer = setTimeout(runExport, delay);
+}
+
+async function runExport() {
+  exportTimer = null;
+  try {
+    await exportCsv();
+    if (exportWarned) {
+      console.log('  csv export recovered');
+      exportWarned = false;
+    }
+  } catch (err) {
+    // Almost always the file being held open by Excel. Keep retrying quietly so the
+    // export lands the moment it is released, rather than waiting for the next edit.
+    if (!exportWarned) {
+      console.warn(`  ! tasks.csv is not writable (${err.code ?? err.message}); retrying until it is`);
+      exportWarned = true;
+    }
+    exportTimer = setTimeout(runExport, 5000);
+  }
+}
+
+// Keeps the CSV current when a task file is created or edited outside the app, and
+// when the browser is not even open. persistent:false so it never holds the process up.
+function watchTasks() {
+  try {
+    const watcher = watch(TASKS_DIR, { persistent: false }, (_event, filename) => {
+      if (filename && !String(filename).toLowerCase().endsWith('.md')) return;
+      scheduleExport();
+    });
+    watcher.on('error', (err) => console.warn(`  ! tasks watcher stopped: ${err.message}`));
+    return true;
+  } catch (err) {
+    console.warn(`  ! cannot watch ${TASKS_DIR}: ${err.message}`);
+    return false;
+  }
 }
 
 /* ---------------------------------------------------------------- http */
@@ -294,6 +352,8 @@ async function handle(req, res) {
   }
 
   if (path === '/api/tasks' && req.method === 'GET') {
+    // Fallback for when fs.watch is unavailable, as on some network or synced folders.
+    if (!watching) scheduleExport();
     return send(res, 200, await loadAll());
   }
 
@@ -304,7 +364,7 @@ async function handle(req, res) {
     const task = normalize({ ...input, id: await nextId(tasks), created: stamp, updated: stamp });
     task.body = input.body ?? '## Next action\n\n\n## Log\n';
     const saved = await writeTask(task, null);
-    await exportCsv([...tasks, saved]);
+    scheduleExport();
     return send(res, 201, saved);
   }
 
@@ -325,13 +385,13 @@ async function handle(req, res) {
       const merged = normalize({ ...existing, ...patch, updated: nowStamp() });
       merged.body = 'body' in patch ? patch.body : existing.body;
       const saved = await writeTask(merged, existing.file);
-      await exportCsv(tasks.map((t) => (t.id === id ? saved : t)));
+      scheduleExport();
       return send(res, 200, saved);
     }
 
     if (req.method === 'DELETE') {
       await rename(join(TASKS_DIR, existing.file), join(ARCHIVE_DIR, existing.file));
-      await exportCsv(tasks.filter((t) => t.id !== id));
+      scheduleExport();
       return send(res, 200, { archived: id });
     }
   }
@@ -359,10 +419,12 @@ function listen(port, attempt = 0) {
   });
   server.listen(port, '127.0.0.1', async () => {
     const url = `http://localhost:${port}/`;
-    await exportCsv(await loadAll());
+    await exportCsv();
+    watching = watchTasks();
     console.log(`\n  tsk  ->  ${url}`);
     console.log(`  tasks: ${TASKS_DIR}`);
-    console.log(`  csv:   ${join(EXPORTS_DIR, 'tasks.csv')}\n\n  Ctrl+C to stop.\n`);
+    console.log(`  csv:   ${CSV_PATH}${watching ? '  (auto-updates)' : '  (updates when the board loads)'}`);
+    console.log(`\n  Ctrl+C to stop.\n`);
     if (process.argv.includes('--open')) {
       spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore' }).unref();
     }
