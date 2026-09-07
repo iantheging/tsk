@@ -40,6 +40,9 @@ const FIELD_ORDER = [
 const DEFAULT_CONFIG = {
   jiraBaseUrl: '',
   serviceNowBaseUrl: '',
+  // Theme for a browser that has not picked one in the UI. The board owns the list of
+  // valid names and falls back to its own default if this is not one of them.
+  defaultTheme: 'dark',
   orgs: ['Internal'],
   port: 7337,
 };

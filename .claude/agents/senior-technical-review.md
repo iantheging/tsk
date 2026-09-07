@@ -45,7 +45,19 @@ report and decides what gets applied.
    with threats that require an attacker already on the machine.
 5. **PHI.** Flag anything that could persist or export patient data — names, MRNs, member IDs,
    DOBs, or rows pasted from a database client — including into logs or `exports\`.
-6. **Cost and simplicity.** Ian's hard constraint is that tsk stays cheaper in agent tokens
+6. **Stale documentation.** Docs are how the schema reaches three writers, so a change that
+   lands without them is half finished. `AGENTS.md` (task-file schema and HTTP API) and
+   `README.md` (setup, config keys, quick-add tokens, UI) are the detail files and carry the
+   change: a renamed or added frontmatter field, changed API semantics, a new `config.json`
+   key, or a new quick-add token that is missing from them is a finding — say which file and
+   what it should now say. `CLAUDE.md` and the two always-loaded steering files
+   (`.kiro\steering\tsk.md`, `.github\copilot-instructions.md`) change only when a *rule* an
+   agent must follow changes, never for a detail — adding a config key to them would be the
+   wrong call, and Cost below is why. `.kiro\steering\tsk.md` is `AGENTS.md` plus a six-line
+   header; check that with `diff <(tail -n +7 .kiro/steering/tsk.md) AGENTS.md`, and a diff
+   that edits one and not the other is a finding on its own. Grep the docs for the
+   identifiers the diff touched rather than reading them end to end.
+7. **Cost and simplicity.** Ian's hard constraint is that tsk stays cheaper in agent tokens
    than an MCP integration. Flag new dependencies, new build steps, growth in always-loaded
    steering files, and complexity that buys nothing. Prefer the boring version.
 

@@ -21,7 +21,7 @@ folder or drop it in OneDrive; every task is a small text file, so diffs stay re
 | `tasks/*.md`        | **Source of truth.** One file per task.                            |
 | `exports/tasks.csv` | **Derived.** Rebuilt whenever a task changes, however it changed. Open it in Excel any time. |
 | `archive/*.md`      | Archived tasks. Nothing is ever deleted, just moved here.          |
-| `config.json`       | Your Jira and ServiceNow base URLs, known orgs, port.              |
+| `config.json`       | Your Jira and ServiceNow base URLs, known orgs, default theme, port. |
 
 The app watches the `tasks` folder, so the CSV stays current whether the change came from the
 board, from Kiro, or from you editing a file in your IDE — and it keeps up even when the browser
@@ -40,6 +40,7 @@ Open `config.json` and point the two base URLs at your instances:
 {
   "jiraBaseUrl": "https://your-company.atlassian.net/browse/",
   "serviceNowBaseUrl": "https://your-company.service-now.com/nav_to.do?uri=task.do%3Fsysparm_query%3Dnumber%3D",
+  "defaultTheme": "dark",
   "orgs": ["Internal", "Acme Health"],
   "port": 7337
 }
@@ -68,8 +69,26 @@ Renew Acme SSO cert @acme !p1 due:fri HCP-4821 #auth ~Dana
 | `HCP-4821`  | Jira ticket     | Any bare `ABC-123` shaped word. Repeatable                   |
 | `INC0012345`| ServiceNow ticket | `INC` `CS` `REQ` `RITM` `CHG` `CTASK` `SCTASK` `TASK` `PRB` plus digits. Repeatable |
 
+The `?` button next to quick-add opens the full token list, so you never have to remember it.
+
 Keys: `n` or `/` focuses quick-add, `Esc` closes the detail panel. Drag cards between columns.
 In the detail panel every field saves on blur — there is no Save button.
+
+## Themes
+
+The dropdown at the right of the top bar switches between **Dark**, **Light**, **Netsmart
+Light**, and **Netsmart Dark** — the last two built on the navy and green from the Netsmart
+logo. Your choice is remembered in that browser, per machine.
+
+Until you pick one, the theme comes from `config.json`:
+
+```json
+{ "defaultTheme": "netsmart-dark" }
+```
+
+Valid values are `dark` (the default), `light`, `netsmart`, and `netsmart-dark`; anything else
+falls back to `dark`. Changing it moves any browser that has never used the dropdown — once you
+choose a theme there, that choice wins and `defaultTheme` no longer applies to you.
 
 ## The task file format
 
