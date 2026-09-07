@@ -94,7 +94,8 @@ of dated lines. Include both headings on every task, even when empty.
 - **Never put PHI in a task.** No patient names, MRNs, member IDs, dates of birth, or rows
   pasted from a database client. Client names, ticket keys, and system behaviour are fine.
   Describe the shape of a data problem, not the data.
-- Ian must refresh the browser to see files you create or change.
+- The board picks up files you create or change on its own; you do not need to ask Ian to
+  refresh.
 
 ## Updating a task
 
@@ -126,4 +127,6 @@ A `PATCH` may still send `jira` instead of `tickets`. It replaces the whole tick
 some, since `jira` overwrites what is there.
 
 `GET /api/tasks` lists everything, `PATCH /api/tasks/TSK-0042` merges changed fields, and
-`DELETE /api/tasks/TSK-0042` archives. The server binds to `127.0.0.1` only.
+`DELETE /api/tasks/TSK-0042` archives. The server binds to `127.0.0.1` only. Address it as `localhost`, `127.0.0.1` or `[::1]` on
+its port - a request carrying any other `Host` is refused, as is a browser call to `/api/*`
+from another site. `curl.exe` sends neither of the headers involved and is unaffected.

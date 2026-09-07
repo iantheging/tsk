@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tsk</title>
+<!-- Favicon: the logo's coloured "s" alone, because three letters are unreadable at 16px.
+     Inline data URI rather than a file, so app.html stays self-contained and server.mjs
+     needs no route for it. Green over the themes' blue accent so the tab is findable in a
+     strip of blue favicons; it cannot follow the in-app theme, so it is fixed dark. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3.5' fill='%231c1f25'/%3E%3Ctext x='8' y='12.75' font-family='Segoe UI,system-ui,sans-serif' font-size='19' font-weight='700' text-anchor='middle' fill='%2384bd00'%3Es%3C/text%3E%3C/svg%3E">
 <script>
   // Runs before the stylesheet paints, so a light theme never flashes dark. An explicit
   // choice wins; otherwise the last seen config.json default, cached on the previous load
@@ -270,6 +275,18 @@
   .chip.due.late { color: #fff; background: var(--overdue); border-color: var(--overdue); font-weight: 600; }
   .chip.wait { color: var(--p2); border-color: color-mix(in srgb, var(--p2) 45%, transparent); }
 
+  /* An update that landed while a task was open. Deliberately a button rather than a
+     toast: it has to survive until Ian acts on it, because taking the update is his call. */
+  #update {
+    position: fixed; top: 54px; left: 50%; transform: translateX(-50%);
+    z-index: 20; font-size: 12px;
+    background: var(--panel);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: var(--shadow);
+  }
+  #update:hover { background: var(--accent-soft); color: var(--accent); }
+
   /* ---------------------------------------------------------- detail */
   #detail {
     position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%);
@@ -342,6 +359,7 @@
 </header>
 
 <div id="board"></div>
+<button id="update" class="ghost" type="button" hidden>Update available — refresh board</button>
 
 <aside id="detail">
   <header>
@@ -673,7 +691,9 @@ function closeDetail() {
   selectedId = null;
   ticketsFor = null;
   ticketsSent = [];
-  render();
+  // Nothing refreshed while the task was open, so take whatever landed meanwhile.
+  if (pendingUpdate) applyUpdate();
+  else render();
 }
 
 // Every detail field commits on blur / change, so there is no Save button to forget.
@@ -783,8 +803,18 @@ function renderTickets(id, tickets) {
 
 /* ---------------------------------------------------------------- actions */
 
+// Our own writes come back round through the folder watcher a moment later. Hold a flag
+// across that round trip - past the server's 150ms broadcast debounce and the client's
+// own 120ms - so a save never raises "update available" against the person who made it.
+let ownWrites = 0;
+
+function ownWrite(promise) {
+  ownWrites++;
+  return promise.finally(() => setTimeout(() => ownWrites--, 500));
+}
+
 async function patch(id, changes) {
-  const saved = await api('/api/tasks/' + id, { method: 'PATCH', body: JSON.stringify(changes) });
+  const saved = await ownWrite(api('/api/tasks/' + id, { method: 'PATCH', body: JSON.stringify(changes) }));
   TASKS = TASKS.map((t) => (t.id === id ? saved : t));
   if (selectedId === id) openDetail(id); else render();
   toast('Saved ' + id);
@@ -823,7 +853,7 @@ $('#quickadd').addEventListener('keydown', async (e) => {
   const draft = parseQuickAdd(e.target.value);
   if (!draft.title) return toast('Give the task a title');
   e.target.value = '';
-  const saved = await api('/api/tasks', { method: 'POST', body: JSON.stringify(draft) });
+  const saved = await ownWrite(api('/api/tasks', { method: 'POST', body: JSON.stringify(draft) }));
   TASKS.push(saved);
   await loadConfig();
   render();
@@ -910,7 +940,7 @@ $('#d-close').addEventListener('click', closeDetail);
 $('#d-archive').addEventListener('click', async () => {
   const t = TASKS.find((x) => x.id === selectedId);
   if (!t || !confirm(`Archive ${t.id}? The file moves to archive/ — nothing is deleted.`)) return;
-  await api('/api/tasks/' + t.id, { method: 'DELETE' });
+  await ownWrite(api('/api/tasks/' + t.id, { method: 'DELETE' }));
   TASKS = TASKS.filter((x) => x.id !== t.id);
   closeDetail();
   toast(t.id + ' archived');
@@ -940,10 +970,84 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'n' || e.key === '/') { e.preventDefault(); $('#quickadd').focus(); }
 });
 
+/* ------------------------------------------------------------- live update */
+
+// The server only ever says "something changed"; the page re-fetches through /api/tasks
+// rather than trusting a pushed payload, so the stream carries nothing worth reading.
+//
+// Nothing refreshes while a task is open. The pane decides whether to save by comparing
+// itself against TASKS, so moving TASKS underneath it is exactly what would make Ian's
+// next blur write stale values back over whoever else edited the file. The banner waits
+// instead, and he takes the update when he closes the task or asks for it.
+let liveTimer = null;
+let pendingUpdate = false;
+
+function scheduleLive() {
+  clearTimeout(liveTimer);
+  liveTimer = setTimeout(live, 120);
+}
+
+async function live() {
+  if (ownWrites) return;
+  if (selectedId) return showUpdate(true);
+  await refresh();
+}
+
+function showUpdate(on) {
+  pendingUpdate = on;
+  $('#update').hidden = !on;
+}
+
+// Clicking the banner blurs whatever field held the caret first, so an edit in progress
+// commits before the board reloads under it.
+async function applyUpdate() {
+  showUpdate(false);
+  const open = selectedId;
+  await refresh();
+  if (!open) return;
+  if (TASKS.some((t) => t.id === open)) openDetail(open);
+  else closeDetail();  // archived or moved while it was open
+}
+
+$('#update').addEventListener('click', applyUpdate);
+
 await loadConfig();
 resolveTheme();
 await refresh();
 $('#quickadd').focus();
+
+let polling = null;
+
+function startPolling() {
+  if (!polling) polling = setInterval(scheduleLive, 30000);
+}
+
+if (CONFIG.watching) {
+  const es = new EventSource('/api/events');
+  es.onmessage = scheduleLive;
+  // A reconnect means the stream was down for a while, so re-sync rather than wait for the
+  // next change. This is how a restart of tsk.cmd heals without a reload.
+  es.onopen = scheduleLive;
+  es.onerror = () => {
+    // CONNECTING means EventSource is retrying by itself. CLOSED is fatal - a non-200 or a
+    // response that is not text/event-stream, which is what a refused stream returns - and
+    // it never reconnects, so fall back rather than let the board go quietly stale.
+    if (es.readyState === EventSource.CLOSED) {
+      toast('Live updates unavailable — falling back to polling');
+      startPolling();
+    }
+  };
+} else {
+  // fs.watch is unavailable on some network and synced folders, and the server reports
+  // which mode it is in. Poll slowly there rather than leave the board silently stale.
+  startPolling();
+}
+
+// Catches anything missed while the tab was in the background, including a dropped stream.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) scheduleLive();
+});
+
 </script>
 </body>
 </html>

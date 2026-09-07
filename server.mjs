@@ -326,6 +326,55 @@ async function runExport() {
   }
 }
 
+/* ---------------------------------------------------------------- events */
+
+// One open server-sent stream per board tab. The payload is deliberately just "changed":
+// the page re-fetches through /api/tasks, so no task content and no client name ever
+// rides the stream. That keeps this endpoint worthless to anything that reaches it.
+const MAX_STREAMS = 20;
+const streams = new Set();
+
+function addStream(req, res) {
+  // Capped so a page opening streams in a loop cannot exhaust the server and leave the
+  // board unable to answer its own requests.
+  if (!watching) return send(res, 503, { error: 'file watching unavailable' });
+  if (streams.size >= MAX_STREAMS) return send(res, 503, { error: 'too many event streams' });
+  res.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-store',
+    connection: 'keep-alive',
+  });
+  res.write('retry: 2000\n\n');
+  streams.add(res);
+  req.on('close', () => streams.delete(res));
+}
+
+function broadcast(line = 'data: changed\n\n') {
+  for (const res of streams) {
+    // write() on a destroyed response returns false rather than throwing, so pruning has
+    // to test the socket. This is what keeps the cap counting live tabs.
+    if (res.destroyed || res.writableEnded) streams.delete(res);
+    else res.write(line);
+  }
+}
+
+// Prunes sockets that died without firing 'close', so the cap above counts live tabs.
+// unref so an idle heartbeat never keeps the process alive on its own.
+setInterval(() => broadcast(': ping\n\n'), 30000).unref();
+
+let broadcastTimer = null;
+
+// Deliberately separate from scheduleExport. A CSV locked open in Excel makes runExport
+// fail and retry for minutes (see above), and the board must still refresh meanwhile —
+// the Markdown file, which is what the page reads, was already written.
+function scheduleBroadcast(delay = 150) {
+  if (broadcastTimer) clearTimeout(broadcastTimer);
+  broadcastTimer = setTimeout(() => {
+    broadcastTimer = null;
+    broadcast();
+  }, delay);
+}
+
 // Keeps the CSV current when a task file is created or edited outside the app, and
 // when the browser is not even open. persistent:false so it never holds the process up.
 function watchTasks() {
@@ -333,8 +382,19 @@ function watchTasks() {
     const watcher = watch(TASKS_DIR, { persistent: false }, (_event, filename) => {
       if (filename && !String(filename).toLowerCase().endsWith('.md')) return;
       scheduleExport();
+      scheduleBroadcast();
     });
-    watcher.on('error', (err) => console.warn(`  ! tasks watcher stopped: ${err.message}`));
+    // The client picks stream-or-poll from this flag, so a watcher that dies mid-session
+    // has to clear it — otherwise the board holds a stream that will never fire again.
+    watcher.on('error', (err) => {
+      watching = false;
+      console.warn(`  ! tasks watcher stopped: ${err.message}; the board will fall back to polling`);
+      // Setting the flag only helps the next page load. Drop the open streams too, so a
+      // board that is already connected reconnects, is refused below, and starts polling
+      // instead of holding a stream that will never fire again.
+      for (const res of streams) res.end();
+      streams.clear();
+    });
     return true;
   } catch (err) {
     console.warn(`  ! cannot watch ${TASKS_DIR}: ${err.message}`);
@@ -346,7 +406,9 @@ function watchTasks() {
 
 function send(res, code, body, type = 'application/json; charset=utf-8') {
   const payload = type.startsWith('application/json') ? JSON.stringify(body) : body;
-  res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store' });
+  // /api is closed to other sites, but / stays navigable so a link to the board works.
+  // That leaves framing as the way a page could drive a board it cannot read, so deny it.
+  res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store', 'x-frame-options': 'DENY' });
   res.end(payload);
 }
 
@@ -374,18 +436,51 @@ async function loadConfig() {
   }
 }
 
+// The board only listens on loopback, but a page in Ian's browser can still address it.
+// Two guards close that. A Host allow-list defeats DNS rebinding: a hostname an attacker
+// controls, re-pointed at 127.0.0.1, still arrives carrying its own name here. And a
+// Sec-Fetch-Site check refuses cross-site calls to the API, which is what stops another
+// tab writing to the task files.
+const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+function hostAllowed(req, port) {
+  const host = String(req.headers.host ?? '');
+  const raw = host.startsWith('[') ? host.slice(0, host.indexOf(']') + 1) : host.split(':')[0];
+  // curl.exe passes the authority through as typed, and browsers accept a trailing dot.
+  // Neither should read as a different host and 403 the documented fallback.
+  const name = raw.toLowerCase().replace(/\.$/, '');
+  const given = host.slice(raw.length).replace(/^:/, '');
+  return ALLOWED_HOSTS.has(name) && (given === '' || given === String(port));
+}
+
+// Browsers always send Sec-Fetch-Site; curl and every other non-browser caller send none.
+// A missing header is therefore allowed, which is what keeps the PowerShell fallback
+// documented in AGENTS.md working. 'none' is a typed URL or a bookmark, also fine.
+function crossSite(req) {
+  const site = req.headers['sec-fetch-site'];
+  return site !== undefined && site !== 'same-origin' && site !== 'none';
+}
+
 async function handle(req, res) {
   const path = new URL(req.url, 'http://localhost').pathname;
+
+  if (!hostAllowed(req, server.address()?.port)) return send(res, 403, { error: 'bad host' });
+  // Scoped to /api so a plain navigation to the board from a link still works.
+  if (path.startsWith('/api/') && crossSite(req)) {
+    return send(res, 403, { error: 'cross-site request refused' });
+  }
 
   if (path === '/' || path === '/index.html') {
     return send(res, 200, await readFile(join(ROOT, 'app.html'), 'utf8'), 'text/html; charset=utf-8');
   }
 
+  if (path === '/api/events' && req.method === 'GET') return addStream(req, res);
+
   if (path === '/api/config' && req.method === 'GET') {
     const cfg = await loadConfig();
     const tasks = await loadAll();
     const orgs = [...new Set([...cfg.orgs, ...tasks.map((t) => t.org)])].filter(Boolean).sort();
-    return send(res, 200, { ...cfg, orgs, statuses: STATUSES, priorities: PRIORITIES, kinds: KINDS });
+    return send(res, 200, { ...cfg, orgs, statuses: STATUSES, priorities: PRIORITIES, kinds: KINDS, watching });
   }
 
   if (path === '/api/tasks' && req.method === 'GET') {
@@ -402,6 +497,7 @@ async function handle(req, res) {
     task.body = input.body ?? '## Next action\n\n\n## Log\n';
     const saved = await writeTask(task, null);
     scheduleExport();
+    scheduleBroadcast();
     return send(res, 201, saved);
   }
 
@@ -427,12 +523,14 @@ async function handle(req, res) {
       merged.body = 'body' in patch ? patch.body : existing.body;
       const saved = await writeTask(merged, existing.file);
       scheduleExport();
+      scheduleBroadcast();
       return send(res, 200, saved);
     }
 
     if (req.method === 'DELETE') {
       await rename(join(TASKS_DIR, existing.file), join(ARCHIVE_DIR, existing.file));
       scheduleExport();
+      scheduleBroadcast();
       return send(res, 200, { archived: id });
     }
   }

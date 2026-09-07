@@ -126,8 +126,9 @@ Notes on hand-editing:
 - **Unknown fields survive.** Add `sprint: 24.9` or `client_contact: …` and the app carries it
   through every save untouched, even though it doesn't display it.
 - **Blank means null.** `due:` with nothing after it is an empty due date.
-- Refresh the browser to pick up files changed on disk. The CSV updates on its own; the board
-  does not yet.
+- The board and the CSV both pick up files changed on disk on their own. While you have a task
+  open the board holds still and an **Update available** button appears instead, so nothing
+  moves under your cursor. Click it to take the update, or just close the task.
 
 ## Editing tasks from Kiro or Copilot
 
@@ -167,8 +168,19 @@ The board talks to a small local HTTP API on `127.0.0.1` only. Scripts can use i
 | `PATCH`  | `/api/tasks/:id`  | Merge changed fields into one task         |
 | `DELETE` | `/api/tasks/:id`  | Move to `archive/`                         |
 | `GET`    | `/api/config`     | Config plus discovered orgs and enum values |
+| `GET`    | `/api/events`     | Server-sent stream; each event is the word `changed` |
 
 ```powershell
 curl.exe -s -X POST http://localhost:7337/api/tasks -H "content-type: application/json" `
   -d '{"title":"Chase Acme on cert renewal","org":"Acme Health","priority":"P1"}'
 ```
+
+`/api/events` is what keeps the board current; it carries no task data, only the signal to
+re-fetch. `/api/config` also reports `watching`, which says whether the folder watcher is
+working — the board polls instead when it isn't.
+
+Two guards sit in front of the API. Requests must carry a `Host` of `localhost`,
+`127.0.0.1`, or `[::1]` on the port the server bound, and browsers may not call `/api/*`
+from another site. Together they stop a page you happen to be visiting from reading or
+writing your tasks over loopback. `curl.exe` sends neither of the headers involved and is
+unaffected — the example above works as written.

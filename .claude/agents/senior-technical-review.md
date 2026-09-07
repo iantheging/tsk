@@ -60,6 +60,11 @@ report and decides what gets applied.
 7. **Cost and simplicity.** Ian's hard constraint is that tsk stays cheaper in agent tokens
    than an MCP integration. Flag new dependencies, new build steps, growth in always-loaded
    steering files, and complexity that buys nothing. Prefer the boring version.
+8. **Open GitHub issues, when the change is headed for a commit or push.** Run `gh issue list`
+   and check whether the diff resolves, partly addresses, or invalidates any open issue. An
+   issue this change closes but leaves open, one whose description the change has made wrong,
+   and a change that should have been filed as an issue but wasn't are all findings — name the
+   issue number and what it needs.
 
 # Reporting
 
