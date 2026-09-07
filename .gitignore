@@ -20,3 +20,6 @@ desktop.ini
 .DS_Store
 *.log
 .vscode/
+
+# Local review-hook state
+.claude/.review-state

@@ -181,8 +181,10 @@
   .chip.org.client { color: var(--client); border-color: color-mix(in srgb, var(--client) 40%, transparent); }
   .chip.org.internal { color: var(--internal); border-color: color-mix(in srgb, var(--internal) 40%, transparent); }
   .chip.org.admin { color: var(--admin); border-color: color-mix(in srgb, var(--admin) 40%, transparent); }
-  .chip.jira { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); text-decoration: none; font-family: "Cascadia Mono", Consolas, monospace; }
-  .chip.jira:hover { background: var(--accent-soft); }
+  .chip.ticket { text-decoration: none; font-family: "Cascadia Mono", Consolas, monospace; }
+  .chip.ticket.jira { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+  .chip.ticket.snow { color: var(--internal); border-color: color-mix(in srgb, var(--internal) 40%, transparent); }
+  a.chip.ticket:hover { background: var(--panel-2); }
   .chip.due.soon { color: var(--p2); border-color: color-mix(in srgb, var(--p2) 45%, transparent); }
   .chip.due.late { color: #fff; background: var(--overdue); border-color: var(--overdue); font-weight: 600; }
   .chip.wait { color: var(--p2); border-color: color-mix(in srgb, var(--p2) 45%, transparent); }
@@ -202,11 +204,22 @@
   #detail .body { flex: 1 1 auto; overflow-y: auto; padding: 4px 14px 16px; }
   #detail h3 { margin: 16px 0 7px; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  /* Keeps "waiting on" and "waiting since" side by side rather than split across rows. */
+  .grid2 .newrow { grid-column: 1; }
   .grid2 label, .full label { display: block; font-size: 11px; color: var(--ink-2); margin-bottom: 3px; }
   .full { margin-top: 8px; }
   .grid2 .field, .full .field { width: 100%; }
   #d-title { font-size: 15px; font-weight: 600; }
-  #d-body { min-height: 220px; resize: vertical; font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; line-height: 1.55; }
+  #d-body {
+    display: block; width: 100%;
+    min-height: 220px; resize: vertical;
+    font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; line-height: 1.55;
+  }
+
+  .ticket { display: grid; grid-template-columns: 112px 1fr auto; gap: 6px; margin-bottom: 6px; }
+  .ticket .field { width: 100%; min-width: 0; }
+  .ticket .ghost { padding: 4px 9px; line-height: 1.2; }
+  #d-ticket-add { font-size: 11.5px; padding: 4px 9px; }
   #d-file { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10.5px; color: var(--ink-3); overflow-wrap: anywhere; }
   .danger { color: var(--p1); border-color: color-mix(in srgb, var(--p1) 40%, transparent); }
   .danger:hover { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
@@ -240,7 +253,6 @@
 <aside id="detail">
   <header>
     <strong id="d-id" style="font-family:Consolas,monospace;color:var(--ink-3)"></strong>
-    <a id="d-jira" class="chip jira" target="_blank" rel="noopener" hidden></a>
     <span style="flex:1"></span>
     <button id="d-archive" class="ghost danger">Archive</button>
     <button id="d-close" class="ghost">Close</button>
@@ -253,12 +265,14 @@
       <div><label for="d-priority">Priority</label><select id="d-priority" class="field"></select></div>
       <div><label for="d-org">Client / org</label><input id="d-org" class="field" list="orglist"></div>
       <div><label for="d-kind">Kind</label><select id="d-kind" class="field"></select></div>
-      <div><label for="d-jira-key">JIRA key</label><input id="d-jira-key" class="field" placeholder="HCP-4821"></div>
       <div><label for="d-due">Due</label><input id="d-due" class="field" type="date"></div>
-      <div><label for="d-waiting">Waiting on</label><input id="d-waiting" class="field" placeholder="Person or team"></div>
+      <div class="newrow"><label for="d-waiting">Waiting on</label><input id="d-waiting" class="field" placeholder="Person or team"></div>
       <div><label for="d-since">Waiting since</label><input id="d-since" class="field" type="date"></div>
     </div>
     <div class="full"><label for="d-tags">Tags <span style="color:var(--ink-3)">(comma separated)</span></label><input id="d-tags" class="field"></div>
+    <h3>Tickets</h3>
+    <div id="d-tickets"></div>
+    <button id="d-ticket-add" class="ghost" type="button">+ Add ticket</button>
     <h3>Notes</h3>
     <textarea id="d-body" class="field" spellcheck="false"></textarea>
     <h3>File</h3>
@@ -280,7 +294,14 @@ const COLUMNS = [
   ['done',        'Done',        'var(--ink-3)'],
 ];
 
-let CONFIG = { jiraBaseUrl: '', orgs: [], statuses: [], priorities: [], kinds: [] };
+// Ticket types, as [stored value, label]. Stored as "TYPE:KEY" strings on the task.
+const TICKET_TYPES = [['JIRA', 'Jira'], ['SNOW', 'ServiceNow']];
+const TICKET_PLACEHOLDER = { JIRA: 'HCP-4821', SNOW: 'INC0012345' };
+// ServiceNow keys are a prefix plus digits; Jira keys always carry a dash.
+const SNOW_RE = /^(INC|CS|REQ|RITM|CHG|CTASK|SCTASK|TASK|PRB)\d{5,}$/i;
+const JIRA_RE = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
+
+let CONFIG = { jiraBaseUrl: '', serviceNowBaseUrl: '', orgs: [], statuses: [], priorities: [], kinds: [] };
 let TASKS = [];
 let selectedId = null;
 const filters = { text: '', org: '', priority: '', dueSoon: false, showDone: false };
@@ -323,12 +344,31 @@ async function api(path, opts) {
   return res.json();
 }
 
+/* -------------------------------------------------------------- tickets */
+
+// A ticket is one "TYPE:KEY" string. Anything unrecognised is treated as a Jira key,
+// which is what a bare key written by hand almost always is.
+function splitTicket(raw) {
+  const s = String(raw);
+  const i = s.indexOf(':');
+  const type = i === -1 ? '' : s.slice(0, i).trim().toUpperCase();
+  const key = (i === -1 ? s : s.slice(i + 1)).trim();
+  return { type: TICKET_TYPES.some(([v]) => v === type) ? type : 'JIRA', key };
+}
+
+const labelFor = (type) => (TICKET_TYPES.find(([v]) => v === type) || TICKET_TYPES[0])[1];
+
+function ticketUrl(type, key) {
+  const base = type === 'SNOW' ? CONFIG.serviceNowBaseUrl : CONFIG.jiraBaseUrl;
+  return base ? base + encodeURIComponent(key) : '';
+}
+
 /* --------------------------------------------------------- quick-add parse */
 
 // Turns "Renew cert @acme !p1 due:fri HCP-4821 #auth ~Dana" into a task object.
 // Unrecognised words fall through to the title, so you can always just type prose.
 function parseQuickAdd(raw) {
-  const t = { title: '', tags: [] };
+  const t = { title: '', tags: [], tickets: [] };
   const words = [];
 
   for (const word of raw.trim().split(/\s+/)) {
@@ -338,7 +378,8 @@ function parseQuickAdd(raw) {
     if ((m = word.match(/^#(.+)$/))) { t.tags.push(m[1]); continue; }
     if ((m = word.match(/^~(.+)$/))) { t.waiting_on = m[1].replace(/_/g, ' '); t.status = 'waiting'; continue; }
     if ((m = word.match(/^due:(.+)$/i))) { const d = parseDue(m[1]); if (d) { t.due = d; continue; } }
-    if (/^[A-Z][A-Z0-9]{1,9}-\d+$/.test(word)) { t.jira = word.toUpperCase(); continue; }
+    if (JIRA_RE.test(word)) { t.tickets.push('JIRA:' + word.toUpperCase()); continue; }
+    if (SNOW_RE.test(word)) { t.tickets.push('SNOW:' + word.toUpperCase()); continue; }
     words.push(word);
   }
   t.title = words.join(' ').trim();
@@ -386,7 +427,7 @@ function visible(t) {
     if (d === null || d > 3) return false;
   }
   if (filters.text) {
-    const hay = [t.id, t.title, t.org, t.jira, t.waiting_on, (t.tags || []).join(' '), t.body]
+    const hay = [t.id, t.title, t.org, (t.tickets || []).join(' '), t.waiting_on, (t.tags || []).join(' '), t.body]
       .join(' ').toLowerCase();
     if (!hay.includes(filters.text)) return false;
   }
@@ -428,11 +469,16 @@ function makeCard(t) {
   const meta = el('div', 'meta');
   meta.append(el('span', `chip org ${t.kind}`, t.org));
 
-  if (t.jira) {
-    const a = el('a', 'chip jira', t.jira);
-    a.href = CONFIG.jiraBaseUrl + t.jira;
+  for (const raw of t.tickets || []) {
+    const { type, key } = splitTicket(raw);
+    const url = ticketUrl(type, key);
+    const cls = `chip ticket ${type.toLowerCase()}`;
+    if (!url) { meta.append(el('span', cls, key)); continue; }
+    const a = el('a', cls, key);
+    a.href = url;
     a.target = '_blank';
     a.rel = 'noopener';
+    a.title = `${labelFor(type)} ${key}`;
     a.onclick = (e) => e.stopPropagation();
     meta.append(a);
   }
@@ -512,17 +558,13 @@ function openDetail(id) {
   $('#d-priority').value = t.priority;
   $('#d-org').value = t.org;
   $('#d-kind').value = t.kind;
-  $('#d-jira-key').value = t.jira || '';
   $('#d-due').value = t.due || '';
   $('#d-waiting').value = t.waiting_on || '';
   $('#d-since').value = t.waiting_since || '';
   $('#d-tags').value = (t.tags || []).join(', ');
   $('#d-body').value = t.body || '';
   $('#d-file').textContent = 'tasks/' + t.file;
-
-  const link = $('#d-jira');
-  link.hidden = !t.jira;
-  if (t.jira) { link.textContent = t.jira; link.href = CONFIG.jiraBaseUrl + t.jira; }
+  renderTickets(t.id, t.tickets || []);
 
   $('#detail').classList.add('open');
   render();
@@ -531,6 +573,8 @@ function openDetail(id) {
 function closeDetail() {
   $('#detail').classList.remove('open');
   selectedId = null;
+  ticketsFor = null;
+  ticketsSent = [];
   render();
 }
 
@@ -546,6 +590,97 @@ function wireDetailField(sel, field, read) {
   };
   node.addEventListener('change', commit);
   node.addEventListener('blur', commit);
+}
+
+/* The ticket list is the one repeatable field, so it is built by hand rather than
+   through wireDetailField. Rows commit on change / blur like everything else. */
+
+function readTickets() {
+  return [...$('#d-tickets').children]
+    .map((row) => ({ type: row.querySelector('select').value, key: row.querySelector('input').value.trim().toUpperCase() }))
+    .filter((t) => t.key)
+    .map((t) => `${t.type}:${t.key}`);
+}
+
+// Compared against what was last *sent*, not against TASKS: TASKS only catches up once
+// a PATCH resolves, and comparing against a stale snapshot silently drops the commit that
+// undoes an in-flight one — typing a key then deleting the row would resurrect the key.
+// Commits are chained so two edits in the same tick land in the order they were made.
+let ticketsSent = [];
+let ticketsPending = 0;
+let ticketQueue = Promise.resolve();
+
+function commitTickets() {
+  if (!selectedId) return;
+  const id = selectedId;
+  const value = readTickets();
+  if (JSON.stringify(ticketsSent) === JSON.stringify(value)) return;
+  ticketsSent = value;
+  ticketsPending++;
+  ticketQueue = ticketQueue
+    .then(() => patch(id, { tickets: value }))
+    .catch(() => {
+      // The write failed — api() has already said so. Forget what we claimed to have
+      // sent, or the next blur sees no change and the edit is never retried. The rows
+      // keep what was typed, so blurring the field again re-sends it.
+      if (id === ticketsFor) ticketsSent = TASKS.find((t) => t.id === id)?.tickets ?? [];
+    })
+    .then(() => { ticketsPending--; });
+}
+
+function ticketRow({ type, key }) {
+  const row = el('div', 'ticket');
+
+  const kind = el('select', 'field');
+  for (const [value, label] of TICKET_TYPES) kind.append(new Option(label, value));
+  kind.value = type;
+
+  const field = el('input', 'field');
+  field.value = key;
+  field.spellcheck = false;
+  field.setAttribute('aria-label', 'Ticket key');
+  const setPlaceholder = () => { field.placeholder = TICKET_PLACEHOLDER[kind.value] || ''; };
+  setPlaceholder();
+  kind.addEventListener('change', setPlaceholder);
+
+  const remove = el('button', 'ghost danger', '×');
+  remove.type = 'button';
+  remove.title = 'Remove this ticket';
+  // Keep focus where it is, so removing a row commits once instead of blurring the
+  // key field into a save of the very row being deleted.
+  remove.addEventListener('mousedown', (e) => e.preventDefault());
+  remove.addEventListener('click', () => { row.remove(); commitTickets(); });
+
+  for (const node of [kind, field]) {
+    node.addEventListener('change', commitTickets);
+    node.addEventListener('blur', commitTickets);
+  }
+
+  row.append(kind, field, remove);
+  return row;
+}
+
+// Rebuilding the rows while one is being edited would steal focus, so leave them alone
+// whenever they already say what the task says. A different task always rebuilds.
+let ticketsFor = null;
+
+function renderTickets(id, tickets) {
+  const host = $('#d-tickets');
+  if (id === ticketsFor) {
+    // Saving any field redraws the whole panel, so a slow PATCH on the title or org can
+    // land while a ticket key is half typed. Never rebuild rows that hold the caret.
+    // Scoped to the same task: showing one task's rows under another's header would let
+    // the next commit write them onto it.
+    if (host.contains(document.activeElement)) return;
+    // A commit still in flight means the rows are ahead of the server. Leave them be
+    // until the queue drains, or an intermediate response redraws a row the user deleted.
+    if (ticketsPending) return;
+    if (host.childElementCount && JSON.stringify(readTickets()) === JSON.stringify(tickets)) return;
+  }
+  ticketsFor = id;
+  ticketsSent = tickets;
+  host.textContent = '';
+  for (const raw of tickets) host.append(ticketRow(splitTicket(raw)));
 }
 
 /* ---------------------------------------------------------------- actions */
@@ -609,6 +744,12 @@ for (const [sel, key] of [['#f-due', 'dueSoon'], ['#f-done', 'showDone']]) {
   });
 }
 
+$('#d-ticket-add').addEventListener('click', () => {
+  const row = ticketRow({ type: 'JIRA', key: '' });
+  $('#d-tickets').append(row);
+  row.querySelector('input').focus();
+});
+
 $('#d-close').addEventListener('click', closeDetail);
 $('#d-archive').addEventListener('click', async () => {
   const t = TASKS.find((x) => x.id === selectedId);
@@ -625,7 +766,6 @@ wireDetailField('#d-status', 'status', (n) => n.value);
 wireDetailField('#d-priority', 'priority', (n) => n.value);
 wireDetailField('#d-org', 'org', (n) => n.value.trim());
 wireDetailField('#d-kind', 'kind', (n) => n.value);
-wireDetailField('#d-jira-key', 'jira', text);
 wireDetailField('#d-due', 'due', text);
 wireDetailField('#d-waiting', 'waiting_on', text);
 wireDetailField('#d-since', 'waiting_since', text);

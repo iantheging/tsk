@@ -37,7 +37,7 @@ priority: P1
 due: 2026-09-08
 waiting_on:
 waiting_since:
-jira: HCP-4821
+tickets: ["JIRA:HCP-4821", "SNOW:INC0012345"]
 tags: [auth, escalation]
 created: 2026-09-03T14:02
 updated: 2026-09-03T16:20
@@ -61,7 +61,7 @@ Get Eng to confirm the token TTL change lands in 2.14.1.
 | `due` | no | `YYYY-MM-DD`, or blank. |
 | `waiting_on` | no | Person or team Ian is blocked on, e.g. `Dana (Eng)`. Blank if not blocked. |
 | `waiting_since` | no | `YYYY-MM-DD` the wait started. Set it whenever you set `waiting_on`. |
-| `jira` | no | Ticket key, uppercase, e.g. `HCP-4821`. |
+| `tickets` | no | Inline list of quoted `TYPE:KEY` strings, uppercase: `["JIRA:HCP-4821", "SNOW:INC0012345"]`. Quote every item — an unquoted colon inside `[ ]` is read as a map by some YAML parsers. `TYPE` is `JIRA` or `SNOW` (ServiceNow); a bare key with no type is read as Jira. Empty is `[]`. Any number per task. Replaces the old `jira` field: files carrying `jira:` convert on their next save, so don't write it into new files. |
 | `tags` | no | Inline list: `[auth, escalation]`. Empty is `[]`. Quote any item containing a comma. |
 | `created` | yes | `YYYY-MM-DDTHH:MM`, local time. Never change it after creation. |
 | `updated` | yes | `YYYY-MM-DDTHH:MM`, local time. Set it on every edit. |
@@ -118,8 +118,12 @@ up; fall back to writing files when it isn't.
 
 ```powershell
 curl.exe -s -X POST http://localhost:7337/api/tasks -H "content-type: application/json" `
-  -d '{"title":"Chase Acme on cert renewal","org":"Acme Health","priority":"P1","jira":"HCP-4821"}'
+  -d '{"title":"Chase Acme on cert renewal","org":"Acme Health","priority":"P1","tickets":["JIRA:HCP-4821"]}'
 ```
+
+A `PATCH` may still send `jira` instead of `tickets`. It replaces the whole ticket list, and
+`"jira": null` clears it — send `tickets` when you mean to add one to a task that already has
+some, since `jira` overwrites what is there.
 
 `GET /api/tasks` lists everything, `PATCH /api/tasks/TSK-0042` merges changed fields, and
 `DELETE /api/tasks/TSK-0042` archives. The server binds to `127.0.0.1` only.

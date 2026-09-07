@@ -23,16 +23,23 @@ const CONFIG_PATH = join(ROOT, 'config.json');
 const STATUSES = ['inbox', 'next', 'in-progress', 'waiting', 'blocked', 'done'];
 const PRIORITIES = ['P1', 'P2', 'P3'];
 const KINDS = ['client', 'internal', 'admin'];
+const TICKET_TYPES = ['JIRA', 'SNOW'];
+const TICKET_ALIASES = { SERVICENOW: 'SNOW', 'SERVICE-NOW': 'SNOW', SN: 'SNOW', J: 'JIRA' };
 
 // Emission order for frontmatter keys. Anything not listed is appended, so extra
 // fields written by Kiro or Copilot survive a round-trip instead of being dropped.
 const FIELD_ORDER = [
   'id', 'title', 'status', 'org', 'kind', 'priority', 'due',
-  'waiting_on', 'waiting_since', 'jira', 'tags', 'created', 'updated',
+  'waiting_on', 'waiting_since', 'tickets', 'tags', 'created', 'updated',
 ];
 
+// The base URLs default to blank rather than to an example host: an unconfigured
+// your-company.service-now.com is a real third party's tenant, and a ticket chip must
+// never send a key somewhere Ian did not point it. Blank renders the chip as plain
+// text. config.example.json carries the shape to copy.
 const DEFAULT_CONFIG = {
-  jiraBaseUrl: 'https://your-company.atlassian.net/browse/',
+  jiraBaseUrl: '',
+  serviceNowBaseUrl: '',
   orgs: ['Internal'],
   port: 7337,
 };
@@ -127,7 +134,10 @@ function emitScalar(v) {
   if (Array.isArray(v)) {
     const items = v.map((x) => {
       const s = String(x);
-      return needsQuote(s) || s.includes(',') ? quote(s) : s;
+      // A colon inside a flow sequence is the one construct YAML parsers disagree on:
+      // [JIRA:HCP-1] reads as a list of one map to some of them. Quoting keeps a
+      // ticket a plain string no matter what parses the file.
+      return needsQuote(s) || s.includes(',') || s.includes(':') ? quote(s) : s;
     });
     return '[' + items.join(', ') + ']';
   }
@@ -164,6 +174,29 @@ function nowStamp() {
 
 const today = () => nowStamp().slice(0, 10);
 
+// Tickets are stored as "TYPE:KEY" strings in one inline list, which is all the flat
+// frontmatter format can carry:  tickets: [JIRA:HCP-4821, SNOW:INC0012345]
+// The old single `jira:` key folds in here, so pre-existing files and API callers that
+// still send `jira` keep working; the field is dropped the next time the file is saved.
+function normalizeTickets(value, legacyJira) {
+  const raw = Array.isArray(value) ? value : value ? [value] : [];
+  if (!raw.length && legacyJira) raw.push(String(legacyJira));
+
+  const out = [];
+  for (const item of raw) {
+    const s = item && typeof item === 'object' ? `${item.type ?? ''}:${item.key ?? ''}` : String(item);
+    const idx = s.indexOf(':');
+    const key = (idx === -1 ? s : s.slice(idx + 1)).trim().toUpperCase();
+    if (!key) continue;
+    let type = idx === -1 ? '' : s.slice(0, idx).trim().toUpperCase();
+    type = TICKET_ALIASES[type] ?? type;
+    if (!TICKET_TYPES.includes(type)) type = 'JIRA';
+    const joined = `${type}:${key}`;
+    if (!out.includes(joined)) out.push(joined);
+  }
+  return out;
+}
+
 function normalize(data) {
   const t = { ...data };
   t.title = String(t.title ?? '').trim() || 'Untitled';
@@ -172,7 +205,8 @@ function normalize(data) {
   t.org = t.org ? String(t.org).trim() : 'Internal';
   t.kind = KINDS.includes(t.kind) ? t.kind : t.org.toLowerCase() === 'internal' ? 'internal' : 'client';
   t.due = t.due ? String(t.due).slice(0, 10) : null;
-  t.jira = t.jira ? String(t.jira).trim().toUpperCase() : null;
+  t.tickets = normalizeTickets(t.tickets, t.jira);
+  delete t.jira;
   t.waiting_on = t.waiting_on ? String(t.waiting_on).trim() : null;
   t.waiting_since = t.waiting_on ? t.waiting_since || today() : null;
   t.tags = Array.isArray(t.tags) ? t.tags.map(String) : t.tags ? [String(t.tags)] : [];
@@ -236,7 +270,7 @@ function nextAction(body) {
 
 const CSV_COLUMNS = [
   'id', 'title', 'status', 'org', 'kind', 'priority', 'due',
-  'waiting_on', 'waiting_since', 'jira', 'tags', 'created', 'updated', 'next_action', 'file',
+  'waiting_on', 'waiting_since', 'tickets', 'tags', 'created', 'updated', 'next_action', 'file',
 ];
 
 const CSV_PATH = join(EXPORTS_DIR, 'tasks.csv');
@@ -382,6 +416,10 @@ async function handle(req, res) {
       delete patch.file;
       // Clearing waiting_on clears the since-date too, so a re-block restarts the clock.
       if ('waiting_on' in patch && !patch.waiting_on) patch.waiting_since = null;
+      // The old `jira` key still works on input and keeps its original replace-the-field
+      // meaning: it sets the ticket list, and an explicit null or empty string clears it.
+      // Appending instead would leave a caller no way to correct a wrong key.
+      if ('jira' in patch && !('tickets' in patch)) patch.tickets = patch.jira ? [String(patch.jira)] : [];
       const merged = normalize({ ...existing, ...patch, updated: nowStamp() });
       merged.body = 'body' in patch ? patch.body : existing.body;
       const saved = await writeTask(merged, existing.file);
