@@ -21,7 +21,7 @@ folder or drop it in OneDrive; every task is a small text file, so diffs stay re
 | `tasks/*.md`        | **Source of truth.** One file per task.                            |
 | `exports/tasks.csv` | **Derived.** Rebuilt whenever a task changes, however it changed. Open it in Excel any time. |
 | `archive/*.md`      | Archived tasks. Nothing is ever deleted, just moved here.          |
-| `config.json`       | Your Jira and ServiceNow base URLs, known orgs, default theme, port. |
+| `config.json`       | Your Jira, ServiceNow, and Azure DevOps base URLs, known orgs, default theme, port. |
 
 The app watches the `tasks` folder, so the CSV stays current whether the change came from the
 board, from Kiro, or from you editing a file in your IDE — and it keeps up even when the browser
@@ -34,12 +34,13 @@ one CSV is how you lose a week of tasks to a bad quote character.
 
 ## Set your ticket links
 
-Open `config.json` and point the two base URLs at your instances:
+Open `config.json` and point the base URLs at your instances:
 
 ```json
 {
   "jiraBaseUrl": "https://your-company.atlassian.net/browse/",
   "serviceNowBaseUrl": "https://your-company.service-now.com/nav_to.do?uri=task.do%3Fsysparm_query%3Dnumber%3D",
+  "devopsBaseUrl": "https://dev.azure.com/your-org/your-project/_workitems/edit/",
   "defaultTheme": "dark",
   "orgs": ["Internal", "Acme Health"],
   "port": 7337
@@ -47,8 +48,9 @@ Open `config.json` and point the two base URLs at your instances:
 ```
 
 Every ticket on a task then gets a clickable chip straight to it — the key is appended to the
-base URL for its type. Leave a URL blank and those chips render as plain text instead. Orgs
-listed here seed the filter dropdown; orgs you type on tasks are picked up automatically.
+base URL for its type (`jiraBaseUrl` for `JIRA:`, `serviceNowBaseUrl` for `SNOW:`,
+`devopsBaseUrl` for `ADO:`). Leave a URL blank and those chips render as plain text instead.
+Orgs listed here seed the filter dropdown; orgs you type on tasks are picked up automatically.
 
 ## Quick add
 
@@ -68,6 +70,7 @@ Renew Acme SSO cert @acme !p1 due:fri HCP-4821 #auth ~Dana
 | `~Dana`     | Waiting on      | Also moves the task to **Waiting**. Use `~Dana_Ops` for spaces |
 | `HCP-4821`  | Jira ticket     | Any bare `ABC-123` shaped word. Repeatable                   |
 | `INC0012345`| ServiceNow ticket | `INC` `CS` `REQ` `RITM` `CHG` `CTASK` `SCTASK` `TASK` `PRB` plus digits. Repeatable |
+| `AB#1234`   | Azure DevOps work item | `AB#` (Azure Boards syntax) or `ADO#` plus the work-item number. Repeatable |
 
 The `?` button next to quick-add opens the full token list, so you never have to remember it.
 
@@ -103,7 +106,7 @@ priority: P1                 # P1 | P2 | P3
 due: 2026-09-08              # YYYY-MM-DD, or blank
 waiting_on: Dana (Eng)       # who owes you something, or blank
 waiting_since: 2026-09-03    # set automatically when waiting_on is filled in
-tickets: ["JIRA:HCP-4821", "SNOW:CS0012345"] # any number, JIRA: or SNOW:, or []
+tickets: ["JIRA:HCP-4821", "SNOW:CS0012345"] # any number, JIRA:/SNOW:/ADO:, or []
 tags: [auth, escalation]
 created: 2026-09-03T14:02
 updated: 2026-09-03T16:20

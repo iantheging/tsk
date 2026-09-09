@@ -67,7 +67,7 @@ Get Eng to confirm the token TTL change lands in 2.14.1.
 | `due` | no | `YYYY-MM-DD`, or blank. |
 | `waiting_on` | no | Person or team Ian is blocked on, e.g. `Dana (Eng)`. Blank if not blocked. |
 | `waiting_since` | no | `YYYY-MM-DD` the wait started. Set it whenever you set `waiting_on`. |
-| `tickets` | no | Inline list of quoted `TYPE:KEY` strings, uppercase: `["JIRA:HCP-4821", "SNOW:INC0012345"]`. Quote every item — an unquoted colon inside `[ ]` is read as a map by some YAML parsers. `TYPE` is `JIRA` or `SNOW` (ServiceNow); a bare key with no type is read as Jira. Empty is `[]`. Any number per task. Replaces the old `jira` field: files carrying `jira:` convert on their next save, so don't write it into new files. |
+| `tickets` | no | Inline list of quoted `TYPE:KEY` strings, uppercase: `["JIRA:HCP-4821", "SNOW:INC0012345"]`. Quote every item — an unquoted colon inside `[ ]` is read as a map by some YAML parsers. `TYPE` is `JIRA`, `SNOW` (ServiceNow), or `ADO` (Azure DevOps — the key is the bare work-item number); a bare key with no type is read as Jira. Empty is `[]`. Any number per task. Replaces the old `jira` field: files carrying `jira:` convert on their next save, so don't write it into new files. |
 | `tags` | no | Inline list: `[auth, escalation]`. Empty is `[]`. Quote any item containing a comma. |
 | `created` | yes | `YYYY-MM-DDTHH:MM`, local time. Never change it after creation. |
 | `updated` | yes | `YYYY-MM-DDTHH:MM`, local time. Set it on every edit. |

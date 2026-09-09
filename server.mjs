@@ -23,8 +23,11 @@ const CONFIG_PATH = join(ROOT, 'config.json');
 const STATUSES = ['inbox', 'next', 'in-progress', 'waiting', 'blocked', 'done'];
 const PRIORITIES = ['P1', 'P2', 'P3'];
 const KINDS = ['client', 'internal', 'admin'];
-const TICKET_TYPES = ['JIRA', 'SNOW'];
-const TICKET_ALIASES = { SERVICENOW: 'SNOW', 'SERVICE-NOW': 'SNOW', SN: 'SNOW', J: 'JIRA' };
+const TICKET_TYPES = ['JIRA', 'SNOW', 'ADO'];
+const TICKET_ALIASES = {
+  SERVICENOW: 'SNOW', 'SERVICE-NOW': 'SNOW', SN: 'SNOW', J: 'JIRA',
+  AZDO: 'ADO', DEVOPS: 'ADO', 'AZURE-DEVOPS': 'ADO', AZUREDEVOPS: 'ADO', AB: 'ADO',
+};
 
 // Emission order for frontmatter keys. Anything not listed is appended, so extra
 // fields written by Kiro or Copilot survive a round-trip instead of being dropped.
@@ -40,6 +43,7 @@ const FIELD_ORDER = [
 const DEFAULT_CONFIG = {
   jiraBaseUrl: '',
   serviceNowBaseUrl: '',
+  devopsBaseUrl: '',
   // Theme for a browser that has not picked one in the UI. The board owns the list of
   // valid names and falls back to its own default if this is not one of them.
   defaultTheme: 'dark',

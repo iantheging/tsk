@@ -6,9 +6,14 @@ tasks/
 archive/
 exports/
 
-# Local settings: your JIRA instance URL and port.
-# server.mjs recreates config.json with defaults on first run.
+# Local settings: your Jira / ServiceNow / Azure DevOps base URLs, known orgs, theme,
+# and port. These name real hosts and clients — keep config.json and every local
+# variant (config.local.json, config.dev.json, …) off GitHub so a URL or client list
+# is never pushed by accident. server.mjs recreates config.json with defaults on first
+# run. config.example.json is the shareable, secret-free template and stays tracked.
 config.json
+config.*.json
+!config.example.json
 
 # Portable node.exe, if you drop one next to tsk.cmd
 node.exe

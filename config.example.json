@@ -1,6 +1,7 @@
 {
   "jiraBaseUrl": "https://your-company.atlassian.net/browse/",
   "serviceNowBaseUrl": "https://your-company.service-now.com/nav_to.do?uri=task.do%3Fsysparm_query%3Dnumber%3D",
+  "devopsBaseUrl": "https://dev.azure.com/your-org/your-project/_workitems/edit/",
   "defaultTheme": "dark",
   "orgs": ["Internal"],
   "port": 7337

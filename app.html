@@ -270,6 +270,7 @@
   .chip.ticket { text-decoration: none; font-family: "Cascadia Mono", Consolas, monospace; }
   .chip.ticket.jira { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
   .chip.ticket.snow { color: var(--internal); border-color: color-mix(in srgb, var(--internal) 40%, transparent); }
+  .chip.ticket.ado { color: var(--admin); border-color: color-mix(in srgb, var(--admin) 40%, transparent); }
   a.chip.ticket:hover { background: var(--panel-2); }
   .chip.due.soon { color: var(--p2); border-color: color-mix(in srgb, var(--p2) 45%, transparent); }
   .chip.due.late { color: #fff; background: var(--overdue); border-color: var(--overdue); font-weight: 600; }
@@ -314,9 +315,12 @@
     font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; line-height: 1.55;
   }
 
-  .ticket { display: grid; grid-template-columns: 112px 1fr auto; gap: 6px; margin-bottom: 6px; }
-  .ticket .field { width: 100%; min-width: 0; }
-  .ticket .ghost { padding: 4px 9px; line-height: 1.2; }
+  /* Scoped to the detail panel: card ticket chips also carry class="ticket", and an
+     unscoped rule here gave them this grid's fixed column width and bottom margin —
+     the fixed-width, mis-aligned chips of issue #16. */
+  #d-tickets .ticket { display: grid; grid-template-columns: 124px 1fr auto; gap: 6px; margin-bottom: 6px; }
+  #d-tickets .ticket .field { width: 100%; min-width: 0; }
+  #d-tickets .ticket .ghost { padding: 4px 9px; line-height: 1.2; }
   #d-ticket-add { font-size: 11.5px; padding: 4px 9px; }
   #d-file { font-family: "Cascadia Mono", Consolas, monospace; font-size: 10.5px; color: var(--ink-3); overflow-wrap: anywhere; }
   .danger { color: var(--p1); border-color: color-mix(in srgb, var(--p1) 40%, transparent); }
@@ -354,6 +358,7 @@
     <code>~Dana</code><span>Waiting on, and moves the task to Waiting. Use <code>~Dana_Ops</code> for a space</span>
     <code>HCP-4821</code><span>Jira ticket — any bare <code>ABC-123</code> shaped word. Repeatable</span>
     <code>INC0012345</code><span>ServiceNow ticket — <code>INC</code> <code>CS</code> <code>REQ</code> <code>RITM</code> <code>CHG</code> <code>CTASK</code> <code>SCTASK</code> <code>TASK</code> <code>PRB</code> plus at least five digits. Repeatable</span>
+    <code>AB#1234</code><span>Azure DevOps work item — <code>AB#</code> or <code>ADO#</code> plus the number. Repeatable</span>
     <i>Anything not recognised becomes the title. <kbd>n</kbd> or <kbd>/</kbd> focuses quick-add, <kbd>Esc</kbd> closes.</i>
   </div>
 </header>
@@ -411,13 +416,16 @@ const COLUMNS = [
 ];
 
 // Ticket types, as [stored value, label]. Stored as "TYPE:KEY" strings on the task.
-const TICKET_TYPES = [['JIRA', 'Jira'], ['SNOW', 'ServiceNow']];
-const TICKET_PLACEHOLDER = { JIRA: 'HCP-4821', SNOW: 'INC0012345' };
-// ServiceNow keys are a prefix plus digits; Jira keys always carry a dash.
+const TICKET_TYPES = [['JIRA', 'Jira'], ['SNOW', 'ServiceNow'], ['ADO', 'Azure DevOps']];
+const TICKET_PLACEHOLDER = { JIRA: 'HCP-4821', SNOW: 'INC0012345', ADO: '1234' };
+// ServiceNow keys are a prefix plus digits; Jira keys always carry a dash; an Azure
+// DevOps work item is a bare number, written AB#1234 (Azure Boards syntax) or ADO#1234
+// in quick-add.
 const SNOW_RE = /^(INC|CS|REQ|RITM|CHG|CTASK|SCTASK|TASK|PRB)\d{5,}$/i;
 const JIRA_RE = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
+const ADO_RE = /^(?:AB|ADO)#(\d+)$/i;
 
-let CONFIG = { jiraBaseUrl: '', serviceNowBaseUrl: '', orgs: [], statuses: [], priorities: [], kinds: [] };
+let CONFIG = { jiraBaseUrl: '', serviceNowBaseUrl: '', devopsBaseUrl: '', orgs: [], statuses: [], priorities: [], kinds: [] };
 let TASKS = [];
 let selectedId = null;
 const filters = { text: '', org: '', priority: '', dueSoon: false, showDone: false };
@@ -474,8 +482,10 @@ function splitTicket(raw) {
 
 const labelFor = (type) => (TICKET_TYPES.find(([v]) => v === type) || TICKET_TYPES[0])[1];
 
+const TICKET_BASE = { SNOW: 'serviceNowBaseUrl', ADO: 'devopsBaseUrl', JIRA: 'jiraBaseUrl' };
+
 function ticketUrl(type, key) {
-  const base = type === 'SNOW' ? CONFIG.serviceNowBaseUrl : CONFIG.jiraBaseUrl;
+  const base = CONFIG[TICKET_BASE[type] || 'jiraBaseUrl'];
   return base ? base + encodeURIComponent(key) : '';
 }
 
@@ -496,6 +506,7 @@ function parseQuickAdd(raw) {
     if ((m = word.match(/^due:(.+)$/i))) { const d = parseDue(m[1]); if (d) { t.due = d; continue; } }
     if (JIRA_RE.test(word)) { t.tickets.push('JIRA:' + word.toUpperCase()); continue; }
     if (SNOW_RE.test(word)) { t.tickets.push('SNOW:' + word.toUpperCase()); continue; }
+    if ((m = word.match(ADO_RE))) { t.tickets.push('ADO:' + m[1]); continue; }
     words.push(word);
   }
   t.title = words.join(' ').trim();
