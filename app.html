@@ -136,7 +136,10 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 10px;
+    /* Wraps rather than squeezing the controls to unreadable widths once quick-add
+       has given up its slack; #board below just takes the height that is left. */
+    flex-wrap: wrap;
+    gap: 8px 10px;
     padding: 9px 14px;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
@@ -277,9 +280,11 @@
   .chip.wait { color: var(--p2); border-color: color-mix(in srgb, var(--p2) 45%, transparent); }
 
   /* An update that landed while a task was open. Deliberately a button rather than a
-     toast: it has to survive until Ian acts on it, because taking the update is his call. */
+     toast: it has to survive until Ian acts on it, because taking the update is his call.
+     A child of <header> (which is position: relative), pinned just under it the same way
+     #syntax is, so it follows the header down when the bar wraps to two rows. */
   #update {
-    position: fixed; top: 54px; left: 50%; transform: translateX(-50%);
+    position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%);
     z-index: 20; font-size: 12px;
     background: var(--panel);
     border-color: var(--accent);
@@ -346,6 +351,12 @@
   <select id="f-pri" class="field">
     <option value="">Any priority</option><option>P1</option><option>P2</option><option>P3</option>
   </select>
+  <select id="f-sort" class="field" title="Sort cards in every column" aria-label="Sort cards" autocomplete="off">
+    <option value="priority">Sort: Priority</option>
+    <option value="org">Sort: Org</option>
+    <option value="due">Sort: Due</option>
+    <option value="waiting">Sort: Waiting</option>
+  </select>
   <button id="f-due" class="ghost" title="Only overdue or due within 3 days">Due soon</button>
   <button id="f-done" class="ghost" title="Show the Done column">Done</button>
   <select id="theme" class="field" title="Theme" aria-label="Theme"></select>
@@ -361,10 +372,10 @@
     <code>AB#1234</code><span>Azure DevOps work item — <code>AB#</code> or <code>ADO#</code> plus the number. Repeatable</span>
     <i>Anything not recognised becomes the title. <kbd>n</kbd> or <kbd>/</kbd> focuses quick-add, <kbd>Esc</kbd> closes.</i>
   </div>
+  <button id="update" class="ghost" type="button" hidden>Update available — refresh board</button>
 </header>
 
 <div id="board"></div>
-<button id="update" class="ghost" type="button" hidden>Update available — refresh board</button>
 
 <aside id="detail">
   <header>
@@ -563,12 +574,40 @@ function visible(t) {
 
 const RANK = { P1: 0, P2: 1, P3: 2 };
 
+// The default order, and the tiebreak every other mode falls back to: switching
+// the sort only regroups the cards by the chosen key, it never reshuffles within
+// a group. A card with no value for the chosen key sorts to the bottom.
 function sortTasks(a, b) {
   if (RANK[a.priority] !== RANK[b.priority]) return RANK[a.priority] - RANK[b.priority];
   const da = daysUntil(a.due), db = daysUntil(b.due);
   if (da !== db) return (da ?? 9e9) - (db ?? 9e9);
   return String(a.title).localeCompare(String(b.title));
 }
+
+function byDue(a, b) {
+  const da = daysUntil(a.due), db = daysUntil(b.due);
+  if (da !== db) return (da ?? 9e9) - (db ?? 9e9);
+  return sortTasks(a, b);
+}
+
+function byOrg(a, b) {
+  // org is always set (the server defaults it to "Internal"), so a plain compare.
+  return String(a.org).localeCompare(String(b.org)) || sortTasks(a, b);
+}
+
+// Longest wait first — oldest waiting_since at the top. Tasks that are not waiting,
+// and any waiting task somehow missing its since-date, sit below the dated ones.
+function byWaiting(a, b) {
+  const rank = (t) => (t.waiting_on ? 0 : 1);
+  if (rank(a) !== rank(b)) return rank(a) - rank(b);
+  const sa = a.waiting_since || '9999-99-99', sb = b.waiting_since || '9999-99-99';
+  if (rank(a) === 0 && sa !== sb) return sa < sb ? -1 : 1;
+  return sortTasks(a, b);
+}
+
+// Reset to 'priority' on every load — sort is a per-session view, never remembered.
+const SORTS = { priority: sortTasks, org: byOrg, due: byDue, waiting: byWaiting };
+let sortMode = 'priority';
 
 function el(tag, cls, text) {
   const n = document.createElement(tag);
@@ -651,7 +690,7 @@ function render() {
     const dot = el('span', 'dot');
     dot.style.background = color;
     h.append(dot, document.createTextNode(label));
-    const items = shown.filter((t) => t.status === status).sort(sortTasks);
+    const items = shown.filter((t) => t.status === status).sort(SORTS[sortMode] || sortTasks);
     h.append(el('b', null, String(items.length)));
     col.append(h);
 
@@ -932,6 +971,7 @@ document.addEventListener('click', (e) => {
 $('#search').addEventListener('input', (e) => { filters.text = e.target.value.trim().toLowerCase(); render(); });
 $('#f-org').addEventListener('change', (e) => { filters.org = e.target.value; render(); });
 $('#f-pri').addEventListener('change', (e) => { filters.priority = e.target.value; render(); });
+$('#f-sort').addEventListener('change', (e) => { sortMode = e.target.value; render(); });
 
 for (const [sel, key] of [['#f-due', 'dueSoon'], ['#f-done', 'showDone']]) {
   $(sel).addEventListener('click', (e) => {
@@ -1021,6 +1061,11 @@ async function applyUpdate() {
 }
 
 $('#update').addEventListener('click', applyUpdate);
+
+// Browsers restore form-control state on reload, so the sort <select> can come back
+// on a non-default option while sortMode is still 'priority'. Force them to agree —
+// the sort is deliberately not remembered across loads.
+$('#f-sort').value = sortMode;
 
 await loadConfig();
 resolveTheme();

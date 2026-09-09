@@ -77,6 +77,14 @@ The `?` button next to quick-add opens the full token list, so you never have to
 Keys: `n` or `/` focuses quick-add, `Esc` closes the detail panel. Drag cards between columns.
 In the detail panel every field saves on blur — there is no Save button.
 
+## Sorting
+
+The **Sort** dropdown in the top bar orders the cards inside every column. The choices are
+**Priority** (the default — P1 first, then soonest due, then title), **Org** (client / org
+A–Z), **Due** (soonest first, undated last), and **Waiting** (longest wait first, non-waiting
+tasks last). Whatever you pick, ties fall back to the Priority order, and the choice resets to
+Priority next time you open the board — it is a view, not a saved preference.
+
 ## Themes
 
 The dropdown at the right of the top bar switches between **Dark**, **Light**, **Netsmart
